@@ -4,13 +4,17 @@
 
 ## Package
 
-- Version: `0.1.2`
+- Version: `0.1.3`
 - Image target: `/R4OS/SOFTWARE/DESKTOP/APPDEF.R4X`
 - Image scope: `full`
 - Canonical project manifest: `module.R4MF`
 
 The manifest is the single source of truth for the artifact, imports, image
 target, and package metadata.
+
+APPDEF stores application, subsystem, and deliberately removed default
+handlers in `ASSOC.R4S`; installed subsystem host metadata remains sourced
+only from `MODULES.JSON`.
 
 ## Build
 

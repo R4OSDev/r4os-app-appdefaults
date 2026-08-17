@@ -87,8 +87,9 @@ const App = struct {
     mouse_down_action: ?Action = null,
     change_open: bool = false,
     change_selected: usize = 0,
-    app_menu_items: [r4std.app_assoc.max_apps]r4os.gui.MenuItem = undefined,
-    app_menu_labels: [r4std.app_assoc.max_apps][56]u8 = undefined,
+    handler_choices: r4std.file_handler.ChoiceList = .{},
+    app_menu_items: [r4std.file_handler.max_choices]r4os.gui.MenuItem = undefined,
+    app_menu_labels: [r4std.file_handler.max_choices][96]u8 = undefined,
     app_menu_count: usize = 0,
     add_open: bool = false,
     add_focus: AddFocus = .ext,
@@ -131,6 +132,7 @@ const App = struct {
     }
 
     fn loadConfig(self: *App) void {
+        _ = r4std.subsystem_runtime.load(&self.ctx.sys);
         self.config = r4std.app_assoc.Config.initDefault();
         @memset(self.original[0..], 0);
         self.original_len = 0;
@@ -226,8 +228,8 @@ const App = struct {
         _ = canvas.rect(rect, bg_color);
         _ = canvas.textClipped(rect.x + 6, rect.y + 4, 68, scratch, ext.extText(), fg_color, bg_color);
         _ = canvas.textClipped(rect.x + 82, rect.y + 4, 170, scratch, ext.typeNameText(), fg_color, bg_color);
-        _ = canvas.textClipped(rect.x + 260, rect.y + 4, 170, scratch, self.appTitleForId(ext.appIdText()), fg_color, bg_color);
-        _ = canvas.textClipped(rect.x + 438, rect.y + 4, rect.w - 444, scratch, self.appPathForId(ext.appIdText()), fg_color, bg_color);
+        _ = canvas.textClipped(rect.x + 260, rect.y + 4, 170, scratch, self.handlerTitle(ext), fg_color, bg_color);
+        _ = canvas.textClipped(rect.x + 438, rect.y + 4, rect.w - 444, scratch, self.handlerPath(ext), fg_color, bg_color);
     }
 
     fn drawDetails(self: *App, canvas: r4os.gui.Canvas, scratch: []u8) void {
@@ -238,7 +240,8 @@ const App = struct {
             return;
         }
         const ext = &self.config.extensions[self.selected];
-        const app = self.config.appById(ext.appIdText());
+        const app = if (ext.handler_kind == .app) self.config.appById(ext.appIdText()) else null;
+        const subsystem = if (ext.handler_kind == .subsystem) self.subsystemForExtension(ext) else null;
         var line: [180]u8 = .{0} ** 180;
 
         setZ(line[0..], "File type: .");
@@ -247,26 +250,47 @@ const App = struct {
         appendZ(line[0..], ext.typeNameText());
         _ = canvas.textClipped(rect.x + 12, rect.y + 24, rect.w - 24, scratch, spanZ(line[0..]), text, bg);
 
-        setZ(line[0..], "App: ");
-        if (app) |entry| {
-            appendZ(line[0..], entry.titleText());
-            appendZ(line[0..], " (");
-            appendZ(line[0..], entry.idText());
-            appendZ(line[0..], ")");
-        } else {
-            appendZ(line[0..], ext.appIdText());
-            appendZ(line[0..], " missing");
+        setZ(line[0..], "Handler: ");
+        switch (ext.handler_kind) {
+            .none => appendZ(line[0..], "None"),
+            .app => if (app) |entry| {
+                appendZ(line[0..], "App ");
+                appendZ(line[0..], entry.titleText());
+                appendZ(line[0..], " (");
+                appendZ(line[0..], entry.idText());
+                appendZ(line[0..], ")");
+            } else {
+                appendZ(line[0..], "App ");
+                appendZ(line[0..], ext.appIdText());
+                appendZ(line[0..], " missing");
+            },
+            .subsystem => if (subsystem) |entry| {
+                appendZ(line[0..], "Subsystem ");
+                appendZ(line[0..], entry.display_name);
+                appendZ(line[0..], " (");
+                appendZ(line[0..], ext.subsystemIdText());
+                appendZ(line[0..], ")");
+            } else {
+                appendZ(line[0..], "Subsystem ");
+                appendZ(line[0..], ext.subsystemIdText());
+                appendZ(line[0..], " missing");
+            },
         }
-        _ = canvas.textClipped(rect.x + 12, rect.y + 44, rect.w - 24, scratch, spanZ(line[0..]), if (app == null) danger else text, bg);
+        const handler_missing = (ext.handler_kind == .app and app == null) or (ext.handler_kind == .subsystem and subsystem == null);
+        _ = canvas.textClipped(rect.x + 12, rect.y + 44, rect.w - 24, scratch, spanZ(line[0..]), if (handler_missing) danger else text, bg);
 
         setZ(line[0..], "Path: ");
-        appendZ(line[0..], if (app) |entry| entry.pathText() else "");
+        appendZ(line[0..], self.handlerPath(ext));
         _ = canvas.textClipped(rect.x + 12, rect.y + 64, rect.w - 24, scratch, spanZ(line[0..]), text, bg);
 
         setZ(line[0..], "Policy: ");
-        appendZ(line[0..], if (app) |entry| policyName(entry.policy) else "-");
+        appendZ(line[0..], if (app) |entry| policyName(entry.policy) else if (ext.handler_kind == .subsystem) "gui" else "-");
         appendZ(line[0..], "   Args: ");
-        appendZ(line[0..], if (app) |entry| entry.argsText() else "-");
+        appendZ(line[0..], if (app) |entry| entry.argsText() else if (ext.handler_kind == .subsystem) "R4SUBSYS1" else "-");
+        if (ext.handler_kind == .subsystem) {
+            appendZ(line[0..], "   Format: ");
+            appendZ(line[0..], ext.formatIdText());
+        }
         appendZ(line[0..], "   Prefix: ");
         appendZ(line[0..], ext.prefixText());
         _ = canvas.textClipped(rect.x + 12, rect.y + 84, rect.w - 24, scratch, spanZ(line[0..]), text, bg);
@@ -452,7 +476,7 @@ const App = struct {
     fn openChangeMenu(self: *App) void {
         self.buildAppMenu();
         if (self.app_menu_count == 0 or self.config.extension_count == 0) {
-            self.setStatus("No apps registered.");
+            self.setStatus("No matching handlers registered.");
             self.change_open = false;
             return;
         }
@@ -461,13 +485,18 @@ const App = struct {
     }
 
     fn chooseApp(self: *App, menu_index: usize) void {
-        const app = appByUsableIndex(&self.config, menu_index) orelse {
-            self.setStatus("Invalid app selection.");
+        if (menu_index >= self.handler_choices.count) {
+            self.setStatus("Invalid handler selection.");
             return;
-        };
+        }
+        const choice = self.handler_choices.items[menu_index];
         if (self.selected >= self.config.extension_count) return;
-        if (!copyNormalizedId(self.config.extensions[self.selected].app_id[0..], app.idText())) {
-            self.setStatus("Invalid app ID.");
+        const changed = switch (choice.kind) {
+            .application => self.config.setExtensionApp(self.selected, choice.handler_id),
+            .subsystem => self.config.setExtensionSubsystem(self.selected, choice.handler_id, choice.format_id),
+        };
+        if (!changed) {
+            self.setStatus("Invalid handler identity.");
             return;
         }
         self.dirty = true;
@@ -495,15 +524,9 @@ const App = struct {
 
     fn removeSelected(self: *App) void {
         if (self.config.extension_count == 0 or self.selected >= self.config.extension_count) return;
-        var index = self.selected;
-        while (index + 1 < self.config.extension_count) : (index += 1) {
-            self.config.extensions[index] = self.config.extensions[index + 1];
-        }
-        self.config.extension_count -= 1;
-        if (self.config.extension_count < self.config.extensions.len) self.config.extensions[self.config.extension_count] = .{};
-        self.ensureSelection();
+        if (!self.config.setExtensionNone(self.selected)) return;
         self.dirty = true;
-        self.setStatus("File type removed.");
+        self.setStatus("Default handler removed.");
     }
 
     fn resetDefaults(self: *App) void {
@@ -516,7 +539,7 @@ const App = struct {
 
     fn saveAndMaybeClose(self: *App, close_on_success: bool) void {
         var validation: [96]u8 = .{0} ** 96;
-        if (!validateConfig(&self.config, validation[0..])) {
+        if (!validateConfig(&self.config, r4std.subsystem_runtime.catalog(), validation[0..])) {
             self.setStatus(spanZ(validation[0..]));
             return;
         }
@@ -632,31 +655,40 @@ const App = struct {
 
     fn buildAppMenu(self: *App) void {
         self.app_menu_count = 0;
-        var app_index: usize = 0;
-        while (app_index < self.config.app_count and self.app_menu_count < self.app_menu_items.len) : (app_index += 1) {
-            const app = &self.config.apps[app_index];
-            if (!usableApp(app)) continue;
+        if (self.selected >= self.config.extension_count) return;
+        r4std.file_handler.collectExtensionChoices(
+            &self.config,
+            r4std.subsystem_runtime.catalog(),
+            self.config.extensions[self.selected].extText(),
+            &self.handler_choices,
+        ) catch {
+            self.handler_choices = .{};
+            return;
+        };
+        while (self.app_menu_count < self.handler_choices.count and self.app_menu_count < self.app_menu_items.len) : (self.app_menu_count += 1) {
+            const choice = self.handler_choices.items[self.app_menu_count];
             const label = self.app_menu_labels[self.app_menu_count][0..];
-            setZ(label, app.titleText());
+            setZ(label, choice.title);
             appendZ(label, " (");
-            appendZ(label, app.idText());
+            appendZ(label, choice.handler_id);
+            if (choice.kind == .subsystem) {
+                appendZ(label, " / ");
+                appendZ(label, choice.format_id);
+            }
             appendZ(label, ")");
             self.app_menu_items[self.app_menu_count] = .{ .text = spanZ(label), .id = @intCast(self.app_menu_count) };
-            self.app_menu_count += 1;
         }
     }
 
     fn defaultAppMenuIndex(self: *const App) usize {
         if (self.selected >= self.config.extension_count) return 0;
-        const app_id = self.config.extensions[self.selected].appIdText();
-        var usable_index: usize = 0;
-        var app_index: usize = 0;
-        while (app_index < self.config.app_count) : (app_index += 1) {
-            const app = &self.config.apps[app_index];
-            if (!usableApp(app)) continue;
-            if (equalsIgnoreCase(app.idText(), app_id)) return usable_index;
-            usable_index += 1;
-        }
+        const ext = &self.config.extensions[self.selected];
+        for (self.handler_choices.slice(), 0..) |choice, index| switch (ext.handler_kind) {
+            .none => return 0,
+            .app => if (choice.kind == .application and equalsIgnoreCase(choice.handler_id, ext.appIdText())) return index,
+            .subsystem => if (choice.kind == .subsystem and equalsIgnoreCase(choice.handler_id, ext.subsystemIdText()) and
+                equalsIgnoreCase(choice.format_id, ext.formatIdText())) return index,
+        };
         return 0;
     }
 
@@ -702,14 +734,30 @@ const App = struct {
         self.add_focus = @enumFromInt(next);
     }
 
-    fn appTitleForId(self: *const App, app_id: []const u8) []const u8 {
-        if (self.config.appById(app_id)) |app| return app.titleText();
-        return app_id;
+    fn handlerTitle(self: *const App, ext: *const r4std.app_assoc.ExtEntry) []const u8 {
+        return switch (ext.handler_kind) {
+            .none => "No default",
+            .app => if (self.config.appById(ext.appIdText())) |app| app.titleText() else ext.appIdText(),
+            .subsystem => if (self.subsystemForExtension(ext)) |entry| entry.display_name else ext.subsystemIdText(),
+        };
     }
 
-    fn appPathForId(self: *const App, app_id: []const u8) []const u8 {
-        if (self.config.appById(app_id)) |app| return app.pathText();
-        return "";
+    fn handlerPath(self: *const App, ext: *const r4std.app_assoc.ExtEntry) []const u8 {
+        return switch (ext.handler_kind) {
+            .none => "",
+            .app => if (self.config.appById(ext.appIdText())) |app| app.pathText() else "",
+            .subsystem => if (self.subsystemForExtension(ext)) |entry| entry.host_path else "",
+        };
+    }
+
+    fn subsystemForExtension(self: *const App, ext: *const r4std.app_assoc.ExtEntry) ?r4os.subsystem_catalog.Entry {
+        _ = self;
+        const catalog = r4std.subsystem_runtime.catalog();
+        for (catalog.entries[0..catalog.count]) |entry| {
+            if (!equalsIgnoreCase(entry.subsystem_id, ext.subsystemIdText())) continue;
+            if (entry.supportsFormat(ext.formatIdText())) return entry;
+        }
+        return null;
     }
 
     fn setStatus(self: *App, value: []const u8) void {
@@ -810,6 +858,22 @@ fn runSelfTest(ctx: *const r4os.r4sys.Context) i32 {
     const reset_txt = indexOfExtension(&config, "TXT") orelse return appdefFail(ctx, "reset-txt");
     if (!equalsIgnoreCase(config.extensions[reset_txt].appIdText(), "NOTEPAD")) return appdefFail(ctx, "reset");
 
+    if (!addExtensionToConfig(&config, "BAS")) return appdefFail(ctx, "subsystem-add");
+    const bas = indexOfExtension(&config, "BAS") orelse return appdefFail(ctx, "subsystem-index");
+    if (!config.setExtensionSubsystem(bas, "test.basic", "basic.qbasic-source")) return appdefFail(ctx, "subsystem-change");
+    var subsystem_bytes: [assoc_config_max_bytes]u8 = undefined;
+    const subsystem_written = config.writeTo(subsystem_bytes[0..]);
+    if (subsystem_written.len == 0 or contains(subsystem_written, "SUBSYSOK.R4X")) return appdefFail(ctx, "subsystem-write");
+    var subsystem_roundtrip = r4std.app_assoc.Config{};
+    if (!subsystem_roundtrip.loadFromBytes(subsystem_written)) return appdefFail(ctx, "subsystem-roundtrip");
+    const persisted_bas = indexOfExtension(&subsystem_roundtrip, "BAS") orelse return appdefFail(ctx, "subsystem-persisted");
+    if (subsystem_roundtrip.extensions[persisted_bas].handler_kind != .subsystem or
+        !equalsIgnoreCase(subsystem_roundtrip.extensions[persisted_bas].subsystemIdText(), "test.basic")) return appdefFail(ctx, "subsystem-persisted-id");
+    if (!subsystem_roundtrip.setExtensionNone(persisted_bas)) return appdefFail(ctx, "subsystem-remove");
+    const removed_written = subsystem_roundtrip.writeTo(subsystem_bytes[0..]);
+    if (!contains(removed_written, "EXT.BAS.HANDLER=NONE")) return appdefFail(ctx, "subsystem-remove-write");
+    config.loadDefaults();
+
     var before: [assoc_config_max_bytes]u8 = .{0} ** assoc_config_max_bytes;
     const before_len = ctx.fileRead(r4std.settings.paths.assoc, before[0..]);
     var cancel_config = config;
@@ -830,7 +894,7 @@ fn runSelfTest(ctx: *const r4os.r4sys.Context) i32 {
     const invalid_txt = indexOfExtension(&invalid, "TXT") orelse return appdefFail(ctx, "invalid-txt");
     setZ(invalid.extensions[invalid_txt].app_id[0..], "MISSING");
     @memset(status[0..], 0);
-    if (validateConfig(&invalid, status[0..])) return appdefFail(ctx, "invalid-accepted");
+    if (validateConfig(&invalid, null, status[0..])) return appdefFail(ctx, "invalid-accepted");
     if (spanZ(status[0..]).len == 0) return appdefFail(ctx, "invalid-status");
 
     @memset(status[0..], 0);
@@ -850,7 +914,7 @@ fn restoreAssoc(ctx: *const r4os.r4sys.Context, present: bool, len: usize, bytes
 }
 
 fn saveConfigToPath(ctx: *const r4os.r4sys.Context, path: [*:0]const u8, config: *const r4std.app_assoc.Config, status: []u8) bool {
-    if (!validateConfig(config, status)) return false;
+    if (!validateConfig(config, null, status)) return false;
     var out: [assoc_config_max_bytes]u8 = .{0} ** assoc_config_max_bytes;
     const bytes = config.writeTo(out[0..]);
     if (bytes.len == 0) {
@@ -866,7 +930,7 @@ fn saveConfigToPath(ctx: *const r4os.r4sys.Context, path: [*:0]const u8, config:
     return true;
 }
 
-fn validateConfig(config: *const r4std.app_assoc.Config, status: []u8) bool {
+fn validateConfig(config: *const r4std.app_assoc.Config, catalog: ?*const r4os.subsystem_catalog.Catalog, status: []u8) bool {
     if (usableAppCount(config) == 0) {
         setZ(status, "No valid app registered.");
         return false;
@@ -878,9 +942,31 @@ fn validateConfig(config: *const r4std.app_assoc.Config, status: []u8) bool {
             setZ(status, "Invalid file type.");
             return false;
         }
-        if (config.appById(ext.appIdText()) == null) {
-            setZ(status, "Invalid target for file type.");
-            return false;
+        switch (ext.handler_kind) {
+            .none => {},
+            .app => if (config.appById(ext.appIdText()) == null) {
+                setZ(status, "Invalid app target for file type.");
+                return false;
+            },
+            .subsystem => {
+                if (ext.subsystemIdText().len == 0 or ext.formatIdText().len == 0) {
+                    setZ(status, "Invalid subsystem target for file type.");
+                    return false;
+                }
+                if (catalog) |installed| {
+                    var found = false;
+                    for (installed.entries[0..installed.count]) |entry| {
+                        if (equalsIgnoreCase(entry.subsystem_id, ext.subsystemIdText()) and entry.supportsFormat(ext.formatIdText())) {
+                            found = true;
+                            break;
+                        }
+                    }
+                    if (!found) {
+                        setZ(status, "Subsystem target is not installed.");
+                        return false;
+                    }
+                }
+            },
         }
     }
     setZ(status, "OK");
@@ -916,9 +1002,7 @@ fn removeExtensionFromConfig(config: *r4std.app_assoc.Config, index: usize) void
 }
 
 fn setExtensionApp(config: *r4std.app_assoc.Config, index: usize, app_id: []const u8) bool {
-    if (index >= config.extension_count) return false;
-    if (config.appById(app_id) == null) return false;
-    return copyNormalizedId(config.extensions[index].app_id[0..], app_id);
+    return config.setExtensionApp(index, app_id);
 }
 
 fn indexOfExtension(config: *const r4std.app_assoc.Config, ext_name: []const u8) ?usize {

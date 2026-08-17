@@ -1,25 +1,41 @@
 ﻿APPDEF.R4X
 ==========
 
-APPDEF.R4X verwaltet Desktop-nahe App-Zuordnungen und Standardprogramme.
+APPDEF.R4X verwaltet Desktop-nahe Dateihandler und Standardprogramme.
 
-Projektstruktur seit 0.51.18:
+Projektstruktur:
 - `build.zig` baut die App als eigenes SDK-Projekt.
 - `build.zig.zon` bindet `r4os_sdk` als Paket.
 - `module.R4MF` beschreibt Artefakt, Zielpfad und Contract.
 
 Build:
 
-    cd Code\System\Software\AppDefaults
-    ..\..\..\DevTools\Zig\zig.exe build
+    cd Repositories\Apps\AppDefaults
+    Build.bat
 
 Ergebnis:
 
-    Code\System\Software\AppDefaults\zig-out\APPDEF.R4X
+    Artifacts\Modules\AppDefaults\APPDEF.R4X
 
 Contract:
-- R4XStart-Entry: `appdef_main`
+- R4XStart-App-Entry ueber das SDK
 - App-Klasse: `gui`
-- R4L-Imports: `R4DESK:Query:1`, `R4DRAW:Query:1`
+- Plattformimporte: `R4SYS`, `R4DESK`, `R4DRAW`
+- Runtime-R4L: `R4STD:SETTINGS_V1:1`
 - Zielpfad im Image: `C:\R4OS\SOFTWARE\DESKTOP\APPDEF.R4X`
 
+Zuordnungsmodell:
+- `ASSOC.R4S` kennt Handler vom Typ `APP`, `SUBSYSTEM` und `NONE`.
+- App-Handler speichern wie bisher App-ID, R4X-Pfad, Startpolicy und
+  Argumenttemplate.
+- Subsystem-Handler speichern ausschliesslich stabile `SUBSYSTEM_ID` und
+  Gastformat-ID. APPDEF zeigt Anzeigename und Hostpfad aus dem installierten
+  `MODULES.JSON`, schreibt diese veraenderlichen Daten aber nie in
+  `ASSOC.R4S` zurueck.
+- `Change...` bietet normale Apps und alle Subsystemformate an, die die
+  gewaehlte Dateiendung deklarieren. `Remove` setzt den Standardhandler
+  bewusst auf `NONE`; `Reset` stellt den ausgelieferten Gesamtstand wieder
+  her. `OK` schreibt kanonisch, liest zur Verifikation zurueck und rollt einen
+  fehlgeschlagenen Schreibvorgang auf den vorherigen Stand zurueck.
+- Eine veraltete Subsystem-ID bleibt sichtbar, kann aber nicht erneut
+  gespeichert werden, solange der passende Host nicht installiert ist.
