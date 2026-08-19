@@ -4,7 +4,7 @@
 
 ## Package
 
-- Version: `0.1.3`
+- Version: `0.1.4`
 - Image target: `/R4OS/SOFTWARE/DESKTOP/APPDEF.R4X`
 - Image scope: `full`
 - Canonical project manifest: `module.R4MF`
@@ -14,7 +14,9 @@ target, and package metadata.
 
 APPDEF stores application, subsystem, and deliberately removed default
 handlers in `ASSOC.R4S`; installed subsystem host metadata remains sourced
-only from `MODULES.JSON`.
+only from `MODULES.JSON`. The shipped `.BAS` default stores only
+`r4os.basic` and `basic.qbasic-source`; Notepad remains a normal alternative
+handler.
 
 ## Build
 

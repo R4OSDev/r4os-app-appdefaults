@@ -39,3 +39,5 @@ Zuordnungsmodell:
   fehlgeschlagenen Schreibvorgang auf den vorherigen Stand zurueck.
 - Eine veraltete Subsystem-ID bleibt sichtbar, kann aber nicht erneut
   gespeichert werden, solange der passende Host nicht installiert ist.
+- Der Auslieferungsstand ordnet `.BAS` stabil `r4os.basic` und
+  `basic.qbasic-source` zu. Notepad bleibt als normale App-Auswahl erhalten.
