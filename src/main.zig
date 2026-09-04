@@ -159,8 +159,8 @@ const App = struct {
         var info: r4os.abi.GuiWindowInfo = .{};
         _ = self.ctx.desk.guiWindowInfo(&info);
         const canvas = r4os.gui.Canvas.init(&self.ctx.draw, info);
-        self.w = clampI32(canvas.w, 660, 1600);
-        self.h = clampI32(canvas.h, 360, 1000);
+        self.w = @max(canvas.w, 660);
+        self.h = @max(canvas.h, 360);
     }
 
     fn render(self: *App) void {
@@ -1073,12 +1073,6 @@ fn policyName(policy: r4os.abi.LaunchPolicy) []const u8 {
         .console => "console",
         .gui => "gui",
     };
-}
-
-fn clampI32(value: i32, min: i32, max: i32) i32 {
-    if (value < min) return min;
-    if (value > max) return max;
-    return value;
 }
 
 fn copyNormalizedId(out: []u8, value: []const u8) bool {
