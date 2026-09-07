@@ -4,7 +4,7 @@
 
 ## Package
 
-- Version: `0.1.4`
+- Version: `0.1.7`
 - Image target: `/R4OS/SOFTWARE/DESKTOP/APPDEF.R4X`
 - Image scope: `full`
 - Canonical project manifest: `module.R4MF`
