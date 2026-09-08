@@ -21,7 +21,7 @@ Contract:
 - R4XStart-App-Entry ueber das SDK
 - App-Klasse: `gui`
 - Plattformimporte: `R4SYS`, `R4DESK`, `R4DRAW`
-- Runtime-R4L: `R4STD:SETTINGS_V1:1`
+- Runtime-R4L: `R4STD:SETTINGS_V1:1` und `R4STD:CONFIG_V1:1`
 - Zielpfad im Image: `C:\R4OS\SOFTWARE\DESKTOP\APPDEF.R4X`
 
 Zuordnungsmodell:
@@ -35,9 +35,23 @@ Zuordnungsmodell:
 - `Change...` bietet normale Apps und alle Subsystemformate an, die die
   gewaehlte Dateiendung deklarieren. `Remove` setzt den Standardhandler
   bewusst auf `NONE`; `Reset` stellt den ausgelieferten Gesamtstand wieder
-  her. `OK` schreibt kanonisch, liest zur Verifikation zurueck und rollt einen
-  fehlgeschlagenen Schreibvorgang auf den vorherigen Stand zurueck.
+  her. `OK` schreibt ueber den atomaren R4STD-Dokumentpfad und meldet
+  Schreib-/Wiederherstellungsfehler ohne einen erfolgreichen Rueckbau
+  vorauszusetzen.
 - Eine veraltete Subsystem-ID bleibt sichtbar, kann aber nicht erneut
   gespeichert werden, solange der passende Host nicht installiert ist.
 - Der Auslieferungsstand ordnet `.BAS` stabil `r4os.basic` und
   `basic.qbasic-source` zu. Notepad bleibt als normale App-Auswahl erhalten.
+
+
+APPDEF: Bestand und Speicherergebnis ab 0.78.63
+---------------------------------------------
+ASSOC.R4S wird vor dem Einlesen ueber R4STD CONFIG_V1 wiederhergestellt.
+Fehlende und leere Dateien aktivieren Defaults; ein Lese-, Groessen-, Format-
+oder Wiederherstellungsfehler sperrt Speichern bis zum erfolgreichen neuen
+Laden. Die App importiert CONFIG_V1 jetzt ausdruecklich. OK verwendet
+saveDocument statt direktem Ueberschreiben und ungeprueftem Rueckbau.
+Bei Fehler bleiben Fenster und Aenderungen offen. Eine ausstehende
+Wiederherstellung wird als solche angezeigt, nicht als abgeschlossen.
+
+Der bestehende /SELFTEST arbeitet ab 0.78.63 nur mit vorher abwesenden C:\TEMP\APPDEF.R4S/.TMP/.BAK. Vorhandene private Daten bleiben erhalten. Die echte ASSOC.R4S wird weder gelesen noch geaendert; ein Bereinigungsfehler verhindert den OK-Abschluss.

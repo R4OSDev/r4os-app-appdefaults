@@ -4,7 +4,7 @@
 
 ## Package
 
-- Version: `0.1.7`
+- Version: `0.1.8`
 - Image target: `/R4OS/SOFTWARE/DESKTOP/APPDEF.R4X`
 - Image scope: `full`
 - Canonical project manifest: `module.R4MF`
@@ -44,3 +44,16 @@ Detailed German technical notes from the migration are preserved in
 Original R4OS material is licensed under Apache License 2.0. See `LICENSE`
 and `NOTICE`. Any repository-specific external material is documented in
 `THIRD_PARTY_NOTICES.md`.
+
+
+APPDEF: Bestand und Speicherergebnis ab 0.78.63
+---------------------------------------------
+ASSOC.R4S wird vor dem Einlesen ueber R4STD CONFIG_V1 wiederhergestellt.
+Fehlende und leere Dateien aktivieren Defaults; ein Lese-, Groessen-, Format-
+oder Wiederherstellungsfehler sperrt Speichern bis zum erfolgreichen neuen
+Laden. Die App importiert CONFIG_V1 jetzt ausdruecklich. OK verwendet
+saveDocument statt direktem Ueberschreiben und ungeprueftem Rueckbau.
+Bei Fehler bleiben Fenster und Aenderungen offen. Eine ausstehende
+Wiederherstellung wird als solche angezeigt, nicht als abgeschlossen.
+
+Der bestehende /SELFTEST arbeitet ab 0.78.63 nur mit vorher abwesenden C:\TEMP\APPDEF.R4S/.TMP/.BAK. Vorhandene private Daten bleiben erhalten. Die echte ASSOC.R4S wird weder gelesen noch geaendert; ein Bereinigungsfehler verhindert den OK-Abschluss.

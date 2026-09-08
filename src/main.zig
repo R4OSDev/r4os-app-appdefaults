@@ -80,6 +80,7 @@ const App = struct {
     original: [assoc_config_max_bytes]u8 = .{0} ** assoc_config_max_bytes,
     original_len: usize = 0,
     original_present: bool = false,
+    load_failed: bool = true,
     selected: usize = 0,
     scroll: usize = 0,
     dirty: bool = false,
@@ -141,17 +142,27 @@ const App = struct {
         @memset(self.original[0..], 0);
         self.original_len = 0;
         self.original_present = false;
+        self.load_failed = true;
+        if (r4std.config.recoverDocumentSave(&self.ctx.sys, r4std.settings.paths.assoc) < 0) {
+            self.setStatus("ASSOC.R4S konnte nicht gelesen/wiederhergestellt werden; Speichern gesperrt.");
+            return;
+        }
         const len = self.ctx.sys.fileRead(r4std.settings.paths.assoc, self.original[0..]);
-        if (len > 0) {
+        if (len == -3 or len == 0) {
+            self.original_present = len == 0;
+            self.load_failed = false;
+            self.setStatus(if (len == 0) "ASSOC.R4S ist leer; Defaults aktiv." else "Defaults aktiv.");
+        } else if (len > 0 and len <= self.original.len) {
             self.original_len = @intCast(len);
             self.original_present = true;
             if (self.config.loadFromBytes(self.original[0..self.original_len])) {
+                self.load_failed = false;
                 self.setStatus("ASSOC.R4S geladen.");
             } else {
-                self.setStatus("ASSOC.R4S unvollstaendig; Defaults aktiv.");
+                self.setStatus("ASSOC.R4S unvollstaendig; Speichern gesperrt.");
             }
         } else {
-            self.setStatus("Defaults aktiv.");
+            self.setStatus("ASSOC.R4S nicht vollstaendig lesbar; Speichern gesperrt.");
         }
         self.selected = 0;
         self.scroll = 0;
@@ -542,6 +553,10 @@ const App = struct {
     }
 
     fn saveAndMaybeClose(self: *App, close_on_success: bool) void {
+        if (self.load_failed) {
+            self.setStatus("Speichern gesperrt: ASSOC.R4S zuerst erfolgreich neu laden.");
+            return;
+        }
         var validation: [96]u8 = .{0} ** 96;
         if (!validateConfig(&self.config, r4std.subsystem_runtime.catalog(), validation[0..])) {
             self.setStatus(spanZ(validation[0..]));
@@ -554,8 +569,13 @@ const App = struct {
             return;
         }
         r4std.settings.ensureSystemDirs(&self.ctx.sys);
-        if (!self.writeAssocWithRollback(bytes)) {
-            self.setStatus("Save failed; rollback completed.");
+        const saved = r4std.config.saveDocument(&self.ctx.sys, r4std.settings.paths.assoc, bytes);
+        if (saved < 0) {
+            self.load_failed = true;
+            self.setStatus(if (saved == r4std.config.error_recovery_failed)
+                "Speichern fehlgeschlagen; Wiederherstellung noch ausstehend."
+            else
+                "Speichern fehlgeschlagen; Konfiguration bitte neu laden.");
             return;
         }
         self.original_present = true;
@@ -565,23 +585,6 @@ const App = struct {
         self.dirty = false;
         self.setStatus("ASSOC.R4S saved.");
         if (close_on_success) self.should_exit = true;
-    }
-
-    fn writeAssocWithRollback(self: *App, bytes: []const u8) bool {
-        if (self.ctx.sys.fileWrite(r4std.settings.paths.assoc, bytes) <= 0) return false;
-        var verify: [assoc_config_max_bytes]u8 = .{0} ** assoc_config_max_bytes;
-        const len = self.ctx.sys.fileRead(r4std.settings.paths.assoc, verify[0..]);
-        if (len > 0 and @as(usize, @intCast(len)) == bytes.len and sameBytes(verify[0..@intCast(len)], bytes)) return true;
-        self.rollbackAssoc();
-        return false;
-    }
-
-    fn rollbackAssoc(self: *App) void {
-        if (self.original_present) {
-            _ = self.ctx.sys.fileWrite(r4std.settings.paths.assoc, self.original[0..self.original_len]);
-        } else {
-            _ = self.ctx.sys.fileDelete(r4std.settings.paths.assoc);
-        }
     }
 
     fn addOrSelectExtension(self: *App, raw_ext: []const u8) bool {
@@ -838,16 +841,19 @@ const App = struct {
 
 const action_order = [_]Action{ .change, .add, .remove, .reset, .ok, .cancel };
 
+const selftest_paths = [_][*:0]const u8{ "C:\\TEMP\\APPDEF.R4S", "C:\\TEMP\\APPDEF.TMP", "C:\\TEMP\\APPDEF.BAK" };
+
 fn runSelfTest(ctx: *const r4os.r4sys.Context) i32 {
     ctx.println("APPDEF selftest");
-    var original: [assoc_config_max_bytes]u8 = .{0} ** assoc_config_max_bytes;
-    const original_read = ctx.fileRead(r4std.settings.paths.assoc, original[0..]);
-    const original_present = original_read > 0;
-    const original_len: usize = if (original_read > 0) @intCast(original_read) else 0;
-    defer restoreAssoc(ctx, original_present, original_len, original[0..]);
+    var scratch: [assoc_config_max_bytes]u8 = undefined;
+    for (selftest_paths) |path| {
+        if (ctx.fileRead(path, &scratch) != -3) return appdefFail(ctx, "private-path-unavailable");
+    }
+    _ = ctx.dirCreate("C:\\TEMP");
+    var cleaned = false;
+    defer if (!cleaned and !cleanupSelfTest(ctx)) ctx.println("APPDEF selftest: private cleanup failed");
 
     var config = r4std.app_assoc.Config.initDefault();
-    if (original_present) _ = config.loadFromBytes(original[0..original_len]);
     if (usableAppCount(&config) < 3) return appdefFail(ctx, "apps");
     const txt = indexOfExtension(&config, "TXT") orelse return appdefFail(ctx, "txt");
     if (!setExtensionApp(&config, txt, "PAINT")) return appdefFail(ctx, "change");
@@ -862,7 +868,7 @@ fn runSelfTest(ctx: *const r4os.r4sys.Context) i32 {
     const reset_txt = indexOfExtension(&config, "TXT") orelse return appdefFail(ctx, "reset-txt");
     if (!equalsIgnoreCase(config.extensions[reset_txt].appIdText(), "NOTEPAD")) return appdefFail(ctx, "reset");
 
-    if (!addExtensionToConfig(&config, "BAS")) return appdefFail(ctx, "subsystem-add");
+    if (indexOfExtension(&config, "BAS") == null and !addExtensionToConfig(&config, "BAS")) return appdefFail(ctx, "subsystem-add");
     const bas = indexOfExtension(&config, "BAS") orelse return appdefFail(ctx, "subsystem-index");
     if (!config.setExtensionSubsystem(bas, "test.basic", "basic.qbasic-source")) return appdefFail(ctx, "subsystem-change");
     var subsystem_bytes: [assoc_config_max_bytes]u8 = undefined;
@@ -878,21 +884,23 @@ fn runSelfTest(ctx: *const r4os.r4sys.Context) i32 {
     if (!contains(removed_written, "EXT.BAS.HANDLER=NONE")) return appdefFail(ctx, "subsystem-remove-write");
     config.loadDefaults();
 
+    var status: [96]u8 = .{0} ** 96;
+    if (!saveConfigToPath(ctx, selftest_paths[0], &config, &status)) return appdefFail(ctx, "private-fixture");
     var before: [assoc_config_max_bytes]u8 = .{0} ** assoc_config_max_bytes;
-    const before_len = ctx.fileRead(r4std.settings.paths.assoc, before[0..]);
+    const before_len = ctx.fileRead(selftest_paths[0], before[0..]);
+    if (before_len <= 0 or before_len > before.len) return appdefFail(ctx, "private-read");
     var cancel_config = config;
     _ = setExtensionApp(&cancel_config, reset_txt, "PAINT");
     var after_cancel: [assoc_config_max_bytes]u8 = .{0} ** assoc_config_max_bytes;
-    const after_len = ctx.fileRead(r4std.settings.paths.assoc, after_cancel[0..]);
+    const after_len = ctx.fileRead(selftest_paths[0], after_cancel[0..]);
     if (before_len != after_len) return appdefFail(ctx, "cancel-length");
     if (before_len > 0 and !sameBytes(before[0..@intCast(before_len)], after_cancel[0..@intCast(after_len)])) return appdefFail(ctx, "cancel-write");
 
     if (!addExtensionToConfig(&config, "DAT")) return appdefFail(ctx, "save-add");
-    var status: [96]u8 = .{0} ** 96;
-    if (!saveConfigToPath(ctx, r4std.settings.paths.assoc, &config, status[0..])) return appdefFail(ctx, "save");
+    if (!saveConfigToPath(ctx, selftest_paths[0], &config, status[0..])) return appdefFail(ctx, "save");
     var saved: [assoc_config_max_bytes]u8 = .{0} ** assoc_config_max_bytes;
-    const saved_len = ctx.fileRead(r4std.settings.paths.assoc, saved[0..]);
-    if (saved_len <= 0 or !contains(saved[0..@intCast(saved_len)], "EXT.DAT.APP=NOTEPAD")) return appdefFail(ctx, "save-verify");
+    const saved_len = ctx.fileRead(selftest_paths[0], saved[0..]);
+    if (saved_len <= 0 or saved_len > saved.len or !contains(saved[0..@intCast(saved_len)], "EXT.DAT.APP=NOTEPAD")) return appdefFail(ctx, "save-verify");
 
     var invalid = config;
     const invalid_txt = indexOfExtension(&invalid, "TXT") orelse return appdefFail(ctx, "invalid-txt");
@@ -902,19 +910,22 @@ fn runSelfTest(ctx: *const r4os.r4sys.Context) i32 {
     if (spanZ(status[0..]).len == 0) return appdefFail(ctx, "invalid-status");
 
     @memset(status[0..], 0);
-    if (saveConfigToPath(ctx, "Z:\\NO\\ASSOC.R4S", &config, status[0..])) return appdefFail(ctx, "writefail");
-    if (spanZ(status[0..]).len == 0) return appdefFail(ctx, "writefail-status");
+    if (saveConfigToPath(ctx, selftest_paths[0], &invalid, status[0..])) return appdefFail(ctx, "invalid-save");
+    if (spanZ(status[0..]).len == 0) return appdefFail(ctx, "invalid-save-status");
 
+    if (!cleanupSelfTest(ctx)) return appdefFail(ctx, "private-cleanup");
+    cleaned = true;
     ctx.println("APPDEF selftest: OK");
     return 0;
 }
 
-fn restoreAssoc(ctx: *const r4os.r4sys.Context, present: bool, len: usize, bytes: []const u8) void {
-    if (present) {
-        _ = ctx.fileWrite(r4std.settings.paths.assoc, bytes[0..len]);
-    } else {
-        _ = ctx.fileDelete(r4std.settings.paths.assoc);
+fn cleanupSelfTest(ctx: *const r4os.r4sys.Context) bool {
+    var ok = true;
+    for (selftest_paths) |path| {
+        const result = ctx.fileDelete(path);
+        if (result < 0) ok = false;
     }
+    return ok;
 }
 
 fn saveConfigToPath(ctx: *const r4os.r4sys.Context, path: [*:0]const u8, config: *const r4std.app_assoc.Config, status: []u8) bool {
@@ -925,8 +936,7 @@ fn saveConfigToPath(ctx: *const r4os.r4sys.Context, path: [*:0]const u8, config:
         setZ(status, "Config too large.");
         return false;
     }
-    r4std.settings.ensureSystemDirs(ctx);
-    if (ctx.fileWrite(path, bytes) <= 0) {
+    if (r4std.config.saveDocument(ctx, path, bytes) < 0) {
         setZ(status, "Write error.");
         return false;
     }
