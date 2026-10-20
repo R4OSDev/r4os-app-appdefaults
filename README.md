@@ -57,3 +57,7 @@ Bei Fehler bleiben Fenster und Aenderungen offen. Eine ausstehende
 Wiederherstellung wird als solche angezeigt, nicht als abgeschlossen.
 
 Der bestehende /SELFTEST arbeitet ab 0.78.63 nur mit vorher abwesenden C:\TEMP\APPDEF.R4S/.TMP/.BAK. Vorhandene private Daten bleiben erhalten. Die echte ASSOC.R4S wird weder gelesen noch geaendert; ein Bereinigungsfehler verhindert den OK-Abschluss.
+
+0.85.44: Rebuilt with SDK0.64.57 and the shared R4STD Unicode17.0.0
+extended grapheme editing boundaries. Byte offsets, scalar font advances
+and grapheme clusters are distinct; no shaping or BiDi support is implied.

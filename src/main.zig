@@ -125,7 +125,7 @@ const App = struct {
                         },
                         .mouse_down => self.handleMouseDown(event.x, event.y),
                         .mouse_up => self.handleMouseUp(event.x, event.y),
-                        .key_down => self.handleKey(@intCast(event.key & 0xFF)),
+                        .key_down => self.handleKey(event.key),
                         else => {},
                     }
                 },
@@ -409,8 +409,9 @@ const App = struct {
         }
     }
 
-    fn handleKey(self: *App, key: u8) void {
-        if (self.add_open) return self.handleAddKey(key);
+    fn handleKey(self: *App, codepoint: u32) void {
+        const key: u8 = if (codepoint <= 0xff) @intCast(codepoint) else 0;
+        if (self.add_open) return self.handleAddKey(codepoint);
         if (self.change_open) return self.handleChangeKey(key);
         switch (key) {
             r4os.gui.Key.escape => self.should_exit = true,
@@ -454,7 +455,8 @@ const App = struct {
         self.render();
     }
 
-    fn handleAddKey(self: *App, key: u8) void {
+    fn handleAddKey(self: *App, codepoint: u32) void {
+        const key: u8 = if (codepoint <= 0xff) @intCast(codepoint) else 0;
         if (key == r4os.gui.Key.escape) {
             self.add_open = false;
             self.setStatus("Hinzufuegen abgebrochen.");
@@ -471,7 +473,7 @@ const App = struct {
             self.render();
             return;
         }
-        if (self.add_focus == .ext and self.add_ext.handleClipboardKey(&self.ctx.desk, key)) self.render();
+        if (self.add_focus == .ext and self.add_ext.handleClipboardCodepoint(&self.ctx.desk, codepoint)) self.render();
     }
 
     fn activate(self: *App, action: Action) void {

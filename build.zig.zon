@@ -5,12 +5,12 @@
     .minimum_zig_version = "0.16.0",
     .dependencies = .{
         .r4os_sdk = .{
-            .url = "https://github.com/R4OSDev/r4os-sdk/archive/2fdc71e11d6a26fd1998dfddb43923f9d707abda.tar.gz",
-            .hash = "r4os_sdk-0.64.35-NnPzAr_IEwGTHSJwdpAoaC4r1p2R4j3ifyp5n06kIwL1",
+            .url = "https://github.com/R4OSDev/r4os-sdk/archive/3a248b52fe0186e98d5d6880a65deb13aa2700a1.tar.gz",
+            .hash = "r4os_sdk-0.64.57-NnPzAhmfGgHE-lStW4WeOf93OhatyLjkfBQXbCoBUYYH",
         },
         .r4os_libraries = .{
-            .url = "https://github.com/R4OSDev/r4os-libraries/archive/9d93fb9d9a5321aa970b5086fba8700562736a9a.tar.gz",
-            .hash = "r4os_libraries-0.64.17-dH4fNQrwhgDeMaPv1MofO1GFcS87X_SrXaLw4JWBAd3O",
+            .url = "https://github.com/R4OSDev/r4os-libraries/archive/faa68c1176c075b43eda2b88068baee1841926f3.tar.gz",
+            .hash = "r4os_libraries-0.64.23-dH4fNfGLnwF9To4xzIAWvxo7AkIalfiLXz9UUVCP3aOZ",
         },
     },
     .paths = .{
