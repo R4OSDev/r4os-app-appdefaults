@@ -1,3 +1,4 @@
+const std = @import("std");
 const r4os = @import("r4os");
 const r4std = @import("r4std");
 
@@ -6,7 +7,7 @@ const AppApi = struct {
     desk: r4os.r4desk.Context,
     draw: r4os.r4draw.Context,
 
-    fn init(r4_app: *r4os.App) ?AppApi {
+    fn init(r4_app: *r4os.App2) ?AppApi {
         return .{
             .sys = r4_app.system(),
             .desk = r4_app.desktop() orelse return null,
@@ -63,8 +64,8 @@ const AddFocus = enum(u8) {
     cancel,
 };
 
-pub fn r4_app_main(r4_app: *r4os.App) i32 {
-    if (!r4std.init(r4_app.startContext())) return r4os.abi.err_no_group;
+pub fn r4_app_main(r4_app: *r4os.App2) i32 {
+    if (!r4std.init2(r4_app.startContext())) return r4os.abi.err_no_group;
     var ctx = AppApi.init(r4_app) orelse return r4os.abi.err_no_group;
     if (hasArg(ctx.sys.argsRaw(), "/SELFTEST")) return runSelfTest(&ctx.sys);
     var app = App{ .ctx = &ctx };
@@ -119,7 +120,7 @@ const App = struct {
                     const kind: r4os.abi.GuiEventKind = @enumFromInt(event.kind);
                     switch (kind) {
                         .close => return 0,
-                        .resize => {
+                        .resize, .font_changed => {
                             self.updateMetrics();
                             self.render();
                         },
@@ -153,7 +154,35 @@ const App = struct {
             self.setStatus("ASSOC.R4S konnte nicht gelesen/wiederhergestellt werden; Speichern gesperrt.");
             return;
         }
+        const files = r4os.app_storage.Files{ .sys = self.ctx.sys };
+        const path = r4os.app_storage.PathZ{ .ptr = r4std.settings.paths.assoc, .len = r4std.settings.paths.assoc.len };
+        const before: ?r4os.abi.FileMetadata2 = switch (files.metadata(path)) {
+            .found => |value| value,
+            .missing => null,
+            .failure => {
+                self.setStatus("ASSOC.R4S metadata unavailable. Saving disabled.");
+                return;
+            },
+        };
+        if (before) |info| {
+            if (info.flags & r4os.abi.file_metadata2_flag_directory != 0 or info.flags & r4os.abi.file_metadata2_flag_byte_size_valid == 0 or info.byte_size > self.original.len) {
+                self.setStatus("ASSOC.R4S exceeds the complete document budget.");
+                return;
+            }
+        }
         const len = self.ctx.sys.fileRead(r4std.settings.paths.assoc, self.original[0..]);
+        const after: ?r4os.abi.FileMetadata2 = switch (files.metadata(path)) {
+            .found => |value| value,
+            .missing => null,
+            .failure => {
+                self.setStatus("ASSOC.R4S identity became unavailable. Saving disabled.");
+                return;
+            },
+        };
+        if (!std.meta.eql(before, after) or (if (before) |info| len < 0 or len != info.byte_size else len != -3)) {
+            self.setStatus("ASSOC.R4S changed while reading. Saving disabled.");
+            return;
+        }
         if (len == -3 or len == 0) {
             self.original_present = len == 0;
             self.load_failed = false;

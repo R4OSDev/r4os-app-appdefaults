@@ -4,7 +4,7 @@
 
 ## Package
 
-- Version: `0.1.9`
+- Version: `0.1.15`
 - Image target: `/R4OS/SOFTWARE/DESKTOP/APPDEF.R4X`
 - Image scope: `full`
 - Canonical project manifest: `module.R4MF`
@@ -61,3 +61,12 @@ Der bestehende /SELFTEST arbeitet ab 0.78.63 nur mit vorher abwesenden C:\TEMP\A
 0.85.44: Rebuilt with SDK0.64.57 and the shared R4STD Unicode17.0.0
 extended grapheme editing boundaries. Byte offsets, scalar font advances
 and grapheme clusters are distinct; no shaping or BiDi support is implied.
+
+API migration 0.90.67
+---------------------
+App2 uses normal SDK201/Contract93/Libraries57, platform Query2 and the
+technical R4STD Query2 binding. SETTINGS_V1/CONFIG_V1 keep their library ABI.
+ASSOC.R4S loading checks complete FileMetadata2 values before and after the
+bounded read. Missing documents, metadata failures, changed identities and
+oversized or partial reads have explicit outcomes. Existing configuration
+recovery and saveDocument own persistence. Font changes rebuild Canvas/layout.

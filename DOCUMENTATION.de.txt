@@ -55,3 +55,12 @@ Bei Fehler bleiben Fenster und Aenderungen offen. Eine ausstehende
 Wiederherstellung wird als solche angezeigt, nicht als abgeschlossen.
 
 Der bestehende /SELFTEST arbeitet ab 0.78.63 nur mit vorher abwesenden C:\TEMP\APPDEF.R4S/.TMP/.BAK. Vorhandene private Daten bleiben erhalten. Die echte ASSOC.R4S wird weder gelesen noch geaendert; ein Bereinigungsfehler verhindert den OK-Abschluss.
+
+API-Migration 0.90.67
+---------------------
+AppDefaults15 verwendet App2/Query2 mit dem normalen SDK201 und unveraenderten
+SETTINGS_V1-/CONFIG_V1-Vertraegen. ASSOC.R4S wird begrenzt und vollstaendig
+zwischen zwei ganzen FileMetadata2-Beobachtungen gelesen. Fehlerhafte oder
+veraenderte Dokumente sperren Speichern bis zum erneuten erfolgreichen Laden.
+Bestehende Recovery und saveDocument besitzen weiterhin die Publikation.
+Fontwechsel baut Canvas und Layout neu auf.
